@@ -1,0 +1,33 @@
+{
+  "name": "cctv-service",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "start:backend": "cd backend && npm run dev",
+    "start:frontend": "node frontend/server.js",
+    "dev-backend": "cd backend && npm run dev",
+    "dev-frontend": "cd frontend && node server.js",
+    "dev": "concurrently \"npm:dev-backend\" \"npm:dev-frontend\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "in": "^0.19.0",
+    "init": "^0.1.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.19.3",
+    "node": "^25.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

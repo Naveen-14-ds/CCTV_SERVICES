@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Admin - Smart CCTV</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-light bg-white px-4 shadow-sm">
+        <a class="navbar-brand" href="#">Admin Panel</a>
+        <div>
+            <button id="complaintsBtn" class="btn btn-danger btn-sm me-2" style="display:none" onclick="showComplaints()">
+                Complaints (<span id="complaintCount">0</span>)
+            </button>
+            <button id="logout" class="btn btn-danger btn-sm">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container my-4">
+        <h4>Admin Dashboard</h4>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="card p-3 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Service Requests</h5>
+                        <select class="form-select form-select-sm w-50" id="requestFilter" onchange="filterRequests(this.value)">
+                            <option value="all">All Status</option>
+                            <option value="Pending">Pending</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                    <div id="serviceRequests">Loading...</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">All Cameras</h5>
+                        <input type="text" class="form-control form-control-sm w-50" placeholder="Search cameras..." id="cameraSearch" onkeyup="filterCameras(this.value)">
+                    </div>
+                    <div id="cams">Loading...</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Users</h5>
+                        <input type="text" class="form-control form-control-sm w-50" placeholder="Search users..." id="userSearch" onkeyup="filterUsers(this.value)">
+                    </div>
+                    <div id="users">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/fetchHelper.js"></script>
+    <script>
+        // Check if user is admin
+        if (!checkRole(['admin'])) {
+            window.location.href = 'login.html';
+        }
+
+        // Store data globally for filtering
+        let allRequests = [];
+        let allCameras = [];
+        let allUsers = [];
+
+        // Logout handler
+        document.getElementById("logout").onclick = () => {
+            localStorage.clear();
+            location.href = "login.html";
+        };
+
+        // Service Requests
+        async function loadServiceRequests() {
+            try {
+                const data = await fetchApi('/services/all');
+                allRequests = data;
+                renderRequests(data);
+            } catch (err) {
+                const container = document.getElementById('serviceRequests');
+                container.innerHTML = `<div class="alert alert-danger">Failed to load service requests: ${err.message}</div>`;
+            }
+        }
+
+        function renderRequests(requests) {
+            const container = document.getElementById('serviceRequests');
+            if (!requests.length) {
+                container.innerHTML = "<p>No service requests found.</p>";
+                return;
+            }
+
+            container.innerHTML = requests.map(req => {
+                const camera = req.cameraId || {};
+                const owner = req.ownerId || {};
+                return `
+                    <div class="border-bottom py-2">
+                        <strong>${camera.name || 'Camera'}</strong>
+                        <small class="text-muted">(${camera.location || 'N/A'})</small><br>
+                        <small>Owner: ${owner.name || owner.email || 'Unknown'}</small><br>
+                        <small>Issue: ${req.issueDescription}</small><br>
+                        <small>Status: <span class="badge bg-${statusColor(req.status)}">${req.status}</span></small>
+                        <div class="mt-2 d-flex gap-2">
+                            ${req.status === 'Pending' ? 
+                                `<button class="btn btn-sm btn-primary" onclick="updateRequestStatus('${req._id}', 'In Progress')">Accept</button>` : ''}
+                            ${req.status !== 'Completed' ? 
+                                `<button class="btn btn-sm btn-success" onclick="updateRequestStatus('${req._id}', 'Completed')">Mark Completed</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function updateRequestStatus(id, status) {
+            try {
+                const body = { status };
+                if (status === 'Completed') {
+                    body.completionDate = new Date().toISOString();
+                }
+
+                await fetchApi(`/services/update/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(body)
+                });
+
+                alert(`Service request ${status === 'In Progress' ? 'accepted' : 'marked as completed'}`);
+                await loadServiceRequests();
+            } catch (err) {
+                console.error('Update request error:', err);
+                alert('Failed to update service request: ' + err.message);
+            }
+        }
+
+        // Cameras
+        async function loadCameras() {
+            try {
+                const data = await fetchApi('/admin/cameras');
+                allCameras = data;
+                renderCameras(data);
+            } catch (err) {
+                const container = document.getElementById('cams');
+                container.innerHTML = `<div class="alert alert-danger">Failed to load cameras: ${err.message}</div>`;
+            }
+        }
+
+        function renderCameras(cameras) {
+            const container = document.getElementById('cams');
+            if (!cameras.length) {
+                container.innerHTML = "<p>No cameras found.</p>";
+                return;
+            }
+
+            container.innerHTML = cameras.map(camera => `
+                <div class="border-bottom py-2">
+                    <strong>${camera.name}</strong>
+                    <small class="text-muted">(${camera.location})</small><br>
+                    <small>Status: <span class="badge bg-${camera.status === 'Active' ? 'success' : 'warning'}">${camera.status}</span></small>
+                </div>
+            `).join('');
+        }
+
+        // Users
+        async function loadUsers() {
+            try {
+                const data = await fetchApi('/admin/users');
+                allUsers = data;
+                renderUsers(data);
+            } catch (err) {
+                const container = document.getElementById('users');
+                container.innerHTML = `<div class="alert alert-danger">Failed to load users: ${err.message}</div>`;
+            }
+        }
+
+        function renderUsers(users) {
+            const container = document.getElementById('users');
+            if (!users.length) {
+                container.innerHTML = "<p>No users found.</p>";
+                return;
+            }
+
+            container.innerHTML = users.map(user => `
+                <div class="border-bottom py-2">
+                    <strong>${user.name}</strong>
+                    <small class="text-muted">(${user.email})</small><br>
+                    <small>Role: ${user.role}</small>
+                </div>
+            `).join('');
+        }
+
+        // Filters
+        function filterRequests(status) {
+            const filtered = status === 'all' ? 
+                allRequests : 
+                allRequests.filter(r => r.status === status);
+            renderRequests(filtered);
+        }
+
+        function filterCameras(search) {
+            const term = search.toLowerCase();
+            const filtered = allCameras.filter(c => 
+                c.name.toLowerCase().includes(term) || 
+                c.location.toLowerCase().includes(term)
+            );
+            renderCameras(filtered);
+        }
+
+        function filterUsers(search) {
+            const term = search.toLowerCase();
+            const filtered = allUsers.filter(u => 
+                u.name.toLowerCase().includes(term) || 
+                u.email.toLowerCase().includes(term)
+            );
+            renderUsers(filtered);
+        }
+
+        // Utilities
+        function statusColor(status) {
+            switch (status) {
+                case 'Completed': return 'success';
+                case 'In Progress': return 'warning';
+                default: return 'secondary';
+            }
+        }
+
+        // Initial load
+        loadServiceRequests();
+        loadCameras();
+        loadUsers();
+    </script>
+</body>
+</html>

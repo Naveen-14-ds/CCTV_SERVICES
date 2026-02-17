@@ -1,0 +1,483 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Admin - Smart CCTV</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    /* Fade-in animation for main sections */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(30px);
+      animation: fadeInUp 1s ease forwards;
+    }
+    .fade-in-delayed {
+      opacity: 0;
+      transform: translateY(30px);
+      animation: fadeInUp 1.5s ease forwards;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    /* Card hover effect */
+    .card:hover {
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12) !important;
+      transform: translateY(-4px) scale(1.02);
+      transition: box-shadow 0.3s, transform 0.3s;
+    }
+    /* Button hover effect */
+    .btn:hover {
+      filter: brightness(1.08);
+      transition: filter 0.2s;
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-light bg-white px-4 shadow-sm">
+  <a class="navbar-brand fw-bold text-primary" href="#"><i class="bi bi-speedometer2"></i> Admin Panel</a>
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <button id="complaintsBtn" class="btn btn-danger btn-sm me-2" style="display:none" onclick="showComplaints()">
+      <i class="bi bi-exclamation-circle"></i> Complaints (<span id="complaintCount">0</span>)
+    </button>
+    <button id="logout" class="btn btn-outline-danger btn-sm"><i class="bi bi-box-arrow-right"></i> Logout</button>
+  </div>
+</nav>
+
+<div class="container my-5">
+  <h2 class="fw-bold mb-4 text-center text-primary fade-in">Admin Dashboard</h2>
+  <div class="row g-4 fade-in">
+    <div class="col-md-4">
+      <div class="card h-100 border-0 shadow-sm fade-in-delayed">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Users</h5>
+            <input type="text" class="form-control form-control-sm w-50" placeholder="Search users..." id="userSearch">
+          </div>
+          <div id="users">Loading...</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100 border-0 shadow-sm fade-in-delayed">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">All Cameras</h5>
+            <input type="text" class="form-control form-control-sm w-50" placeholder="Search cameras..." id="cameraSearch">
+          </div>
+          <div id="cams">Loading...</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100 border-0 shadow-sm fade-in-delayed">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Service Requests</h5>
+            <select class="form-select form-select-sm w-50" id="requestFilter">
+              <option value="all">All Status</option>
+              <option value="Pending">Pending</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Completed">Completed</option>
+            </select>
+          </div>
+          <div id="serviceRequests">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mt-5 fade-in-delayed">
+    <div class="col-12">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Feedback & Ratings</h5>
+            <div class="d-flex gap-2">
+              <select class="form-select form-select-sm" id="ratingFilter">
+                <option value="all">All Ratings</option>
+                <option value="5">5 Stars</option>
+                <option value="4">4 Stars</option>
+                <option value="3">3 Stars</option>
+                <option value="2">2 Stars</option>
+                <option value="1">1 Star</option>
+              </select>
+            </div>
+          </div>
+          <div id="feedbacks">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/fetchHelper.js"></script>
+<script>
+const API_BASE = window.location.origin + "/api";
+const token = localStorage.getItem("token");
+const user = JSON.parse(localStorage.getItem("user") || "{}");
+if (!token || user.role !== "admin") location.href = "login.html";
+
+document.getElementById("logout").onclick = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  location.href = "login.html";
+};
+
+async function loadUsers() {
+  const res = await fetch(API_BASE + "/admin/users", { headers: { Authorization: "Bearer " + token }});
+  const data = await safeJson(res);
+  if (!res.ok) return document.getElementById("users").innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+  if (!data.length) return document.getElementById("users").innerHTML = "<p>No users.</p>";
+  const html = data.map(u => `
+    <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+      <div>
+        <strong>${u.name}</strong> <small class="text-muted">(${u.email})</small><br>
+        <small>Role: ${u.role}</small>
+      </div>
+      <div>
+        ${u.role === 'admin' ? '' : `<button class="btn btn-sm btn-danger" onclick="delUser('${u._id}')">Delete</button>`}
+      </div>
+    </div>
+  `).join("");
+  document.getElementById("users").innerHTML = html;
+}
+
+async function loadCams() {
+  const res = await fetch(API_BASE + "/admin/cameras", { headers: { Authorization: "Bearer " + token }});
+  const data = await safeJson(res);
+  if (!res.ok) return document.getElementById("cams").innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+  if (!data.length) return document.getElementById("cams").innerHTML = "<p>No cameras.</p>";
+  const html = data.map(c => `
+    <div class="border-bottom py-2">
+      <strong>${c.name}</strong> (${c.model || 'N/A'})<br>
+      <small>Owner: ${c.owner?.name || '—'} - ${c.location}</small>
+    </div>
+  `).join("");
+  document.getElementById("cams").innerHTML = html;
+}
+
+async function loadServiceRequests() {
+  const res = await fetch(API_BASE + "/services/all", { headers: { Authorization: "Bearer " + token }});
+  const data = await safeJson(res);
+  const container = document.getElementById("serviceRequests");
+  if (!res.ok) {
+    container.innerHTML = `<div class="alert alert-danger">${data.message || 'Failed to load service requests'}</div>`;
+    return;
+  }
+  if (!data.length) {
+    container.innerHTML = "<p>No service requests.</p>";
+    return;
+  }
+
+  container.innerHTML = data.map(req => {
+    const camera = req.cameraId || {};
+    const owner = req.ownerId || {};
+    return `
+      <div class="border-bottom py-2">
+        <strong>${camera.name || 'Camera'}</strong> <small class="text-muted">(${camera.location || 'N/A'})</small><br>
+        <small>Owner: ${owner.name || owner.email || 'Unknown'}</small><br>
+        <small>Issue: ${req.issueDescription}</small><br>
+        <small>Status: <span class="badge bg-${statusColor(req.status)}">${req.status}</span></small>
+        <div class="mt-2 d-flex gap-2">
+          ${req.status === 'Pending' ? `<button class="btn btn-sm btn-primary" onclick="updateRequestStatus('${req._id}', 'In Progress')">Accept</button>` : ''}
+          ${req.status !== 'Completed' ? `<button class="btn btn-sm btn-success" onclick="updateRequestStatus('${req._id}', 'Completed')">Mark Completed</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function statusColor(status) {
+  switch (status) {
+    case 'Completed':
+      return 'success';
+    case 'In Progress':
+      return 'warning';
+    default:
+      return 'secondary';
+  }
+}
+
+async function delUser(id) {
+  if (!confirm("Delete user and all cameras?")) return;
+  const res = await fetch(API_BASE + "/admin/user/" + id, { method: "DELETE", headers: { Authorization: "Bearer " + token }});
+  const data = await safeJson(res);
+  if (!res.ok) return alert(data.message || "Error");
+  alert("Deleted");
+  loadUsers(); loadCams();
+}
+
+async function updateRequestStatus(id, status) {
+  try {
+    const body = { status };
+    if (status === 'Completed') {
+      body.completionDate = new Date().toISOString();
+    }
+    const res = await fetch(API_BASE + "/services/update/" + id, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await safeJson(res);
+    if (!res.ok) {
+      alert(data.message || data.msg || 'Failed to update request');
+      return;
+    }
+    if (status === 'In Progress') {
+      alert('Service request accepted');
+    } else if (status === 'Completed') {
+      alert('Service request marked as completed');
+    }
+    loadServiceRequests();
+    loadCams();
+  } catch (err) {
+    console.error('Update request error', err);
+    alert('Failed to update service request.');
+  }
+}
+
+// Store data globally for filtering
+let allUsers = [];
+let allCameras = [];
+let allRequests = [];
+let allFeedbacks = [];
+
+// Search and filter functions
+function filterUsers(search) {
+  const term = search.toLowerCase();
+  const filtered = allUsers.filter(u => 
+    u.name.toLowerCase().includes(term) || 
+    u.email.toLowerCase().includes(term)
+  );
+  renderUsers(filtered);
+}
+
+function filterCameras(search) {
+  const term = search.toLowerCase();
+  const filtered = allCameras.filter(c => 
+    c.name.toLowerCase().includes(term) || 
+    c.location.toLowerCase().includes(term) ||
+    (c.owner?.name || '').toLowerCase().includes(term)
+  );
+  renderCameras(filtered);
+}
+
+function filterRequests(status) {
+  const filtered = status === 'all' 
+    ? allRequests 
+    : allRequests.filter(r => r.status === status);
+  renderRequests(filtered);
+}
+
+function filterFeedbacks(rating) {
+  const filtered = rating === 'all'
+    ? allFeedbacks
+    : allFeedbacks.filter(f => f.rating === parseInt(rating));
+  renderFeedbacks(filtered);
+}
+
+// Render functions
+function renderUsers(users) {
+  if (!users.length) {
+    document.getElementById("users").innerHTML = "<p>No users found.</p>";
+    return;
+  }
+  const html = users.map(u => `
+    <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+      <div>
+        <strong>${u.name}</strong> <small class="text-muted">(${u.email})</small><br>
+        <small>Role: ${u.role}</small>
+      </div>
+      <div>
+        ${u.role === 'admin' ? '' : `<button class="btn btn-sm btn-danger" onclick="delUser('${u._id}')">Delete</button>`}
+      </div>
+    </div>
+  `).join("");
+  document.getElementById("users").innerHTML = html;
+}
+
+function renderCameras(cameras) {
+  if (!cameras.length) {
+    document.getElementById("cams").innerHTML = "<p>No cameras found.</p>";
+    return;
+  }
+  const html = cameras.map(c => `
+    <div class="border-bottom py-2">
+      <strong>${c.name}</strong> (${c.model || 'N/A'})<br>
+      <small>Owner: ${c.owner?.name || '—'} - ${c.location}</small>
+    </div>
+  `).join("");
+  document.getElementById("cams").innerHTML = html;
+}
+
+function renderRequests(requests) {
+  const container = document.getElementById("serviceRequests");
+  if (!requests.length) {
+    container.innerHTML = "<p>No service requests found.</p>";
+    return;
+  }
+
+  container.innerHTML = requests.map(req => {
+    const camera = req.cameraId || {};
+    const owner = req.ownerId || {};
+    return `
+      <div class="border-bottom py-2">
+        <strong>${camera.name || 'Camera'}</strong> <small class="text-muted">(${camera.location || 'N/A'})</small><br>
+        <small>Owner: ${owner.name || owner.email || 'Unknown'}</small><br>
+        <small>Issue: ${req.issueDescription}</small><br>
+        <small>Status: <span class="badge bg-${statusColor(req.status)}">${req.status}</span></small>
+        <div class="mt-2 d-flex gap-2">
+          ${req.status === 'Pending' ? `<button class="btn btn-sm btn-primary" onclick="updateRequestStatus('${req._id}', 'In Progress')">Accept</button>` : ''}
+          ${req.status !== 'Completed' ? `<button class="btn btn-sm btn-success" onclick="updateRequestStatus('${req._id}', 'Completed')">Mark Completed</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderFeedbacks(feedbacks) {
+  const container = document.getElementById("feedbacks");
+  if (!feedbacks.length) {
+    container.innerHTML = "<p>No feedback found.</p>";
+    return;
+  }
+
+  container.innerHTML = feedbacks.map(fb => `
+    <div class="border-bottom py-2">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <strong>${fb.ownerId?.name || 'User'}</strong>
+          <div class="text-warning">
+            ${'★'.repeat(fb.rating)}${'☆'.repeat(5-fb.rating)}
+          </div>
+          <small class="text-muted">Service Request: ${fb.requestId?.issueDescription || 'N/A'}</small>
+        </div>
+        <small class="text-muted">${new Date(fb.date || fb.createdAt).toLocaleDateString()}</small>
+      </div>
+      <p class="mb-0 mt-2">${fb.comments || ''}</p>
+      <div class="mt-2">
+        ${fb.requestId && fb.requestId._id ? `
+          <button class="btn btn-sm btn-primary me-2" onclick="openRequest('${fb.requestId._id}')">Open Request</button>
+          ${fb.requestId.status !== 'In Progress' ? `<button class="btn btn-sm btn-warning me-2" onclick="handleComplaintAction('${fb.requestId._id}','In Progress')">Mark In Progress</button>` : ''}
+          ${fb.requestId.status !== 'Completed' ? `<button class="btn btn-sm btn-success" onclick="handleComplaintAction('${fb.requestId._id}','Completed')">Mark Completed</button>` : ''}
+        ` : ''}
+      </div>
+    </div>
+  `).join("");
+}
+
+// Show only feedback items that are complaints (have comments)
+function showComplaints() {
+  const complaints = allFeedbacks.filter(f => f.comments && String(f.comments).trim().length > 0);
+  const container = document.getElementById('feedbacks');
+  if (!complaints.length) {
+    container.innerHTML = '<p>No complaints found.</p>';
+    return;
+  }
+  renderFeedbacks(complaints);
+}
+
+// Load data functions
+async function loadUsers() {
+  const res = await fetch(API_BASE + "/admin/users", { headers: { Authorization: "Bearer " + token }});
+  const data = await safeJson(res);
+  if (!res.ok) {
+    document.getElementById("users").innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+    return;
+  }
+  allUsers = data;
+  renderUsers(data);
+}
+
+async function loadCams() {
+  const res = await fetch(API_BASE + "/admin/cameras", { headers: { Authorization: "Bearer " + token }});
+  const data = await safeJson(res);
+  if (!res.ok) {
+    document.getElementById("cams").innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+    return;
+  }
+  allCameras = data;
+  renderCameras(data);
+}
+
+async function loadServiceRequests() {
+  const res = await fetch(API_BASE + "/services/all", { headers: { Authorization: "Bearer " + token }});
+  const data = await safeJson(res);
+  if (!res.ok) {
+    document.getElementById("serviceRequests").innerHTML = `<div class="alert alert-danger">${data.message || 'Failed to load service requests'}</div>`;
+    return;
+  }
+  allRequests = data;
+  renderRequests(data);
+}
+
+async function loadFeedbacks() {
+  const res = await fetch(API_BASE + "/feedback/all", { headers: { Authorization: "Bearer " + token }});
+  const data = await safeJson(res);
+  if (!res.ok) {
+    document.getElementById("feedbacks").innerHTML = `<div class="alert alert-danger">${data.message || 'Failed to load feedbacks'}</div>`;
+    return;
+  }
+  allFeedbacks = data;
+  renderFeedbacks(data);
+  // update complaints count and show complaints button when appropriate
+  try {
+    const complaints = allFeedbacks.filter(f => f.comments && String(f.comments).trim().length > 0);
+    const complaintsBtn = document.getElementById('complaintsBtn');
+    const complaintCountEl = document.getElementById('complaintCount');
+    if (complaintCountEl) complaintCountEl.innerText = complaints.length;
+    if (complaintsBtn) complaintsBtn.style.display = complaints.length ? 'inline-block' : 'none';
+  } catch (err) {
+    console.warn('Error updating complaints count', err);
+  }
+}
+
+// navigate to service request details in admin view (simple behavior: scroll to service requests and refresh list)
+function openRequest(requestId) {
+  const el = document.getElementById('serviceRequests');
+  if (!el) return;
+  loadServiceRequests().then(() => {
+    el.scrollIntoView({ behavior: 'smooth' });
+  });
+}
+
+async function handleComplaintAction(requestId, status) {
+  if (!confirm(`Are you sure you want to mark this request as ${status}?`)) return;
+  try {
+    const body = { status };
+    if (status === 'Completed') body.completionDate = new Date().toISOString();
+    const res = await fetch(API_BASE + '/services/update/' + requestId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(body)
+    });
+    const data = await safeJson(res);
+    if (!res.ok) return alert(data.message || 'Failed to update request');
+    alert('Request updated');
+    // refresh lists
+    loadServiceRequests();
+    loadFeedbacks();
+  } catch (err) {
+    console.error('Complaint action error', err);
+    alert('Failed to perform action');
+  }
+}
+
+// Event Listeners
+document.getElementById("userSearch").addEventListener("input", (e) => filterUsers(e.target.value));
+document.getElementById("cameraSearch").addEventListener("input", (e) => filterCameras(e.target.value));
+document.getElementById("requestFilter").addEventListener("change", (e) => filterRequests(e.target.value));
+document.getElementById("ratingFilter").addEventListener("change", (e) => filterFeedbacks(e.target.value));
+
+// Initial load
+loadUsers();
+loadCams();
+loadServiceRequests();
+loadFeedbacks();
+</script>
+</body>
+</html>
